@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#f2f0e9" />
+  <title>Hit Machar — Mini Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="game-shell">
+    <canvas id="game" aria-label="Hit the mosquito game"></canvas>
+    <div class="hud">
+      <div class="score"><strong id="score">0</strong><span>BEST <b id="best">0</b></span></div>
+      <button id="pause" class="pause" aria-label="Pause">||</button>
+    </div>
+    <section id="overlay" class="overlay">
+      <div class="panel">
+        <p class="eyebrow">A tiny mosquito problem</p>
+        <h1 id="overlay-title">HIT MACHAR</h1>
+        <p id="overlay-copy">Hold and drag to aim the dotted line from the sleeper. Release when it crosses the mosquito.</p>
+        <button id="primary" class="primary">▶ PLAY</button>
+        <p class="hint">Aim the dotted line, then release</p>
+      </div>
+    </section>
+    <div id="toast" class="toast">+1</div>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
