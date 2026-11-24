@@ -24,8 +24,9 @@
   missSound.volume=.8;
 
   let W=600,H=950, dpr=1, score=0, best=Number(localStorage.getItem('hm-best')||0);
-  let running=false, paused=false, last=0, mosquito=null, shot=null, particles=[], spawn=0, aim=null;
+  let running=false, paused=false, last=0, mosquitoes=[], shot=null, particles=[], spawn=0, aim=null;
   let nextSpeedScore=10, mosquitoSpeedScale=1, speedFrom=1, speedTarget=1, speedTransitionElapsed=1;
+  let nextFlyScore=25, fliesPerWave=1;
   let audio=null, hovering=false, dragging=false, dragStart=null;
   bestEl.textContent=best;
 
@@ -96,20 +97,28 @@
   new ResizeObserver(resize).observe(canvas); resize();
 
   const rand=(a,b)=>a+Math.random()*(b-a);
-  function newMosquito(){
-    const side=Math.random()<.5?-1:1;
-    mosquito={x:side<0?W+25:-25,y:rand(H*.22,H*.53),vx:side*rand(55,105),vy:rand(-25,25),phase:rand(0,6.28),alive:true,dead:false,fallTime:0,rotation:0,passSoundPlayed:false};
+  function newMosquito(side){
+    if(side===undefined)side=Math.random()<.5?-1:1;
+    return {x:side<0?W+25:-25,y:rand(H*.22,H*.53),vx:side*rand(55,105),vy:rand(-25,25),phase:rand(0,6.28),alive:true,dead:false,fallTime:0,rotation:0,passSoundPlayed:false};
+  }
+  function spawnWave(){
+    const firstSide=Math.random()<.5?-1:1;
+    for(let i=0;i<fliesPerWave;i++){
+      const side=i===0?firstSide:i===1?-firstSide:(Math.random()<.5?-1:1);
+      mosquitoes.push(newMosquito(side));
+    }
   }
   function start(){
-    score=0; scoreEl.textContent=0; mosquito=null; shot=null; particles=[]; spawn=.5;
+    score=0; scoreEl.textContent=0; mosquitoes=[]; shot=null; particles=[]; spawn=.5;
     nextSpeedScore=10; mosquitoSpeedScale=1; speedFrom=1; speedTarget=1; speedTransitionElapsed=1;
+    nextFlyScore=25; fliesPerWave=1;
     running=true; paused=false; overlay.classList.remove('show'); last=performance.now();
     ensureAudio();
     requestAnimationFrame(loop);
   }
   function pause(){
     if(!running)return;
-    paused=true; running=false; title.textContent='Ⅱ PAUSED'; copy.textContent='Take a breath. The mosquito is still out there.'; primary.textContent='▶ RESUME'; overlay.classList.add('show');
+    paused=true; running=false; title.textContent='Ⅱ PAUSED'; copy.textContent='Take a breath. The mosquitoes are still out there.'; primary.textContent='▶ RESUME'; overlay.classList.add('show');
   }
   function resume(){ paused=false; overlay.classList.remove('show'); running=true; last=performance.now(); requestAnimationFrame(loop); }
   function end(){
@@ -238,12 +247,17 @@
     // subtle paper texture dots
     ctx.fillStyle='#e7e4dc';for(let i=0;i<24;i++){let x=(i*137)%W,y=(i*211)%H;ctx.fillRect(x,y,1.5,1.5);}
     drawBed(time); drawAim();
-    if(mosquito)drawMosquito(mosquito);
+    mosquitoes.forEach(drawMosquito);
     drawShot();
     particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,3,3);});ctx.globalAlpha=1;
   }
-  function hitMosquito(){
+  function hitMosquito(mosquito){
+    if(!mosquito||mosquito.dead)return;
     score++;scoreEl.textContent=score;
+    if(score>=nextFlyScore){
+      fliesPerWave++;
+      nextFlyScore+=25;
+    }
     if(score>=nextSpeedScore&&speedTarget<2.5){
       speedFrom=mosquitoSpeedScale;
       speedTarget=Math.min(speedTarget*rand(1.08,1.18),2.5);
@@ -270,8 +284,9 @@
       const eased=progress*progress*(3-2*progress);
       mosquitoSpeedScale=speedFrom+(speedTarget-speedFrom)*eased;
     }
-    if(!mosquito){spawn-=dt;if(spawn<=0)newMosquito();}
-    if(mosquito){
+    if(!mosquitoes.length){spawn-=dt;if(spawn<=0)spawnWave();}
+    for(let i=mosquitoes.length-1;i>=0;i--){
+      const mosquito=mosquitoes[i];
       if(mosquito.dead){
         mosquito.fallTime+=dt;
         mosquito.vy+=H*.9*dt;
@@ -285,8 +300,8 @@
           mosquito.vx=0;
           mosquito.rotation=Math.PI*.5;
           if(mosquito.fallTime>.65){
-            mosquito=null;
-            spawn=.45;
+            mosquitoes.splice(i,1);
+            if(!mosquitoes.length)spawn=.45;
           }
         }
       }else{
@@ -304,8 +319,9 @@
     }
     if(shot){
       shot.life-=dt;shot.x+=shot.vx*dt;shot.y+=shot.vy*dt;
-      if(mosquito&&Math.hypot(shot.x-mosquito.x,shot.y-mosquito.y)<22)hitMosquito();
-      if(shot.life<=0)shot=null;
+      const hit=mosquitoes.find(m=>!m.dead&&Math.hypot(shot.x-m.x,shot.y-m.y)<22);
+      if(hit)hitMosquito(hit);
+      if(shot&&shot.life<=0)shot=null;
     }
     particles=particles.filter(p=>p.life>0);particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*1.8;});
     draw();requestAnimationFrame(loop);
@@ -314,21 +330,25 @@
     if(!running||paused)return;
     const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
     aim={x,y};
-    hovering=lineHitsMosquito();
+    hovering=Boolean(lineHitsMosquito());
     canvas.classList.toggle('targeting',hovering);
   }
   function lineHitsMosquito(){
-    if(!dragging||!aim||!mosquito||mosquito.dead)return false;
+    if(!dragging||!aim)return null;
     const sx=W*.56,sy=H*.77,dx=aim.x-sx,dy=aim.y-sy;
     const lengthSq=dx*dx+dy*dy;
-    const t=lengthSq?Math.max(0,Math.min(1,((mosquito.x-sx)*dx+(mosquito.y-sy)*dy)/lengthSq)):0;
-    return Math.hypot(sx+t*dx-mosquito.x,sy+t*dy-mosquito.y)<=17;
+    for(const mosquito of mosquitoes){
+      if(mosquito.dead)continue;
+      const t=lengthSq?Math.max(0,Math.min(1,((mosquito.x-sx)*dx+(mosquito.y-sy)*dy)/lengthSq)):0;
+      if(Math.hypot(sx+t*dx-mosquito.x,sy+t*dy-mosquito.y)<=17)return mosquito;
+    }
+    return null;
   }
   canvas.addEventListener('pointermove',e=>{
     if(!running||paused)return;
     const r=canvas.getBoundingClientRect();
     aim={x:e.clientX-r.left,y:e.clientY-r.top};
-    hovering=lineHitsMosquito();
+    hovering=Boolean(lineHitsMosquito());
     canvas.classList.toggle('targeting',hovering);
     if(dragging)canvas.classList.add('dragging');
   });
@@ -354,12 +374,12 @@
     const x=e.clientX-r.left,y=e.clientY-r.top;
     const didDrag=dragStart&&Math.hypot(x-dragStart.x,y-dragStart.y)>=8;
     pointer(e);
-    const shouldHit=didDrag&&lineHitsMosquito();
+    const hit=didDrag?lineHitsMosquito():null;
     dragging=false;
     canvas.classList.remove('dragging');
     if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
-    if(shouldHit){
-      hitMosquito();
+    if(hit){
+      hitMosquito(hit);
     }else{
       playMissSound();
     }
