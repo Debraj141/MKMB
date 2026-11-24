@@ -25,6 +25,7 @@
 
   let W=600,H=950, dpr=1, score=0, best=Number(localStorage.getItem('hm-best')||0);
   let running=false, paused=false, last=0, mosquito=null, shot=null, particles=[], spawn=0, aim=null;
+  let nextSpeedScore=10, mosquitoSpeedScale=1, speedFrom=1, speedTarget=1, speedTransitionElapsed=1;
   let audio=null, hovering=false, dragging=false, dragStart=null;
   bestEl.textContent=best;
 
@@ -101,6 +102,7 @@
   }
   function start(){
     score=0; scoreEl.textContent=0; mosquito=null; shot=null; particles=[]; spawn=.5;
+    nextSpeedScore=10; mosquitoSpeedScale=1; speedFrom=1; speedTarget=1; speedTransitionElapsed=1;
     running=true; paused=false; overlay.classList.remove('show'); last=performance.now();
     ensureAudio();
     requestAnimationFrame(loop);
@@ -242,6 +244,12 @@
   }
   function hitMosquito(){
     score++;scoreEl.textContent=score;
+    if(score>=nextSpeedScore&&speedTarget<2.5){
+      speedFrom=mosquitoSpeedScale;
+      speedTarget=Math.min(speedTarget*rand(1.08,1.18),2.5);
+      speedTransitionElapsed=0;
+      nextSpeedScore=score+Math.floor(rand(3,9));
+    }
     if(score>best){best=score;bestEl.textContent=best;localStorage.setItem('hm-best',best);}
     for(let i=0;i<18;i++)particles.push({x:mosquito.x,y:mosquito.y,vx:rand(-90,90),vy:rand(-100,80),life:1,color:['#d75c35','#383838','#c9bda6'][i%3]});
     mosquito.dead=true;
@@ -256,6 +264,12 @@
   function loop(t){
     if(!running)return;
     const dt=Math.min((t-last)/1000,.04);last=t;
+    if(speedTransitionElapsed<1){
+      speedTransitionElapsed=Math.min(1,speedTransitionElapsed+dt);
+      const progress=speedTransitionElapsed;
+      const eased=progress*progress*(3-2*progress);
+      mosquitoSpeedScale=speedFrom+(speedTarget-speedFrom)*eased;
+    }
     if(!mosquito){spawn-=dt;if(spawn<=0)newMosquito();}
     if(mosquito){
       if(mosquito.dead){
@@ -277,7 +291,7 @@
         }
       }else{
         const previousX=mosquito.x;
-        mosquito.x+=mosquito.vx*dt;mosquito.y+=mosquito.vy*dt+Math.sin(t/220+mosquito.phase)*18*dt;mosquito.phase+=dt*13;
+        mosquito.x+=mosquito.vx*mosquitoSpeedScale*dt;mosquito.y+=mosquito.vy*mosquitoSpeedScale*dt+Math.sin(t/220+mosquito.phase)*18*dt;mosquito.phase+=dt*13;
         if(mosquito.vx>0&&!mosquito.passSoundPlayed&&previousX<0&&mosquito.x>=0){
           mosquito.passSoundPlayed=true;
           playFlyPassSound();
