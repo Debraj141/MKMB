@@ -27,6 +27,7 @@
   let running=false, paused=false, last=0, mosquitoes=[], shot=null, particles=[], spawn=0, aim=null;
   let nextSpeedScore=10, mosquitoSpeedScale=1, speedFrom=1, speedTarget=1, speedTransitionElapsed=1;
   let nextFlyScore=25, fliesPerWave=1;
+  let waveSize=1, waveHitCount=0, waveEscapeCount=0;
   let audio=null, hovering=false, dragging=false, dragStart=null;
   bestEl.textContent=best;
 
@@ -99,11 +100,14 @@
   const rand=(a,b)=>a+Math.random()*(b-a);
   function newMosquito(side){
     if(side===undefined)side=Math.random()<.5?-1:1;
-    return {x:side<0?W+25:-25,y:rand(H*.22,H*.53),vx:side*rand(55,105),vy:rand(-25,25),phase:rand(0,6.28),alive:true,dead:false,fallTime:0,rotation:0,passSoundPlayed:false};
+    return {x:side<0?W+25:-25,y:rand(H*.22,H*.53),vx:side*rand(55,105),vy:rand(-25,25),phase:rand(0,6.28),value:1,alive:true,dead:false,fallTime:0,rotation:0,passSoundPlayed:false};
   }
   function spawnWave(){
+    waveSize=fliesPerWave;
+    waveHitCount=0;
+    waveEscapeCount=0;
     const firstSide=Math.random()<.5?-1:1;
-    for(let i=0;i<fliesPerWave;i++){
+    for(let i=0;i<waveSize;i++){
       const side=i===0?firstSide:i===1?-firstSide:(Math.random()<.5?-1:1);
       mosquitoes.push(newMosquito(side));
     }
@@ -112,6 +116,7 @@
     score=0; scoreEl.textContent=0; mosquitoes=[]; shot=null; particles=[]; spawn=.5;
     nextSpeedScore=10; mosquitoSpeedScale=1; speedFrom=1; speedTarget=1; speedTransitionElapsed=1;
     nextFlyScore=25; fliesPerWave=1;
+    waveSize=1; waveHitCount=0; waveEscapeCount=0;
     running=true; paused=false; overlay.classList.remove('show'); last=performance.now();
     ensureAudio();
     requestAnimationFrame(loop);
@@ -122,7 +127,7 @@
   }
   function resume(){ paused=false; overlay.classList.remove('show'); running=true; last=performance.now(); requestAnimationFrame(loop); }
   function end(){
-    running=false; title.textContent='GAME OVER'; copy.textContent=`You swatted ${score} mosquito${score===1?'':'es'}. Best score: ${best}.`; primary.textContent='↻ PLAY AGAIN'; overlay.classList.add('show');
+    running=false; title.textContent='GAME OVER'; copy.textContent=`Final score: ${score}. Best score: ${best}.`; primary.textContent='↻ PLAY AGAIN'; overlay.classList.add('show');
   }
   primary.addEventListener('click',()=> paused?resume():start());
   pauseBtn.addEventListener('click',pause);
@@ -220,6 +225,9 @@
     ctx.fillStyle='#242424';ctx.beginPath();ctx.arc(8,-1,3.5,0,7);ctx.fill();
     line(10,-1,19,-5,'#222',1.2);
     for(let i=0;i<3;i++){line(-3+i*4,3, -8+i*5,11,'#222',1.2);}
+    ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.lineWidth=2;ctx.strokeStyle='#222';ctx.strokeText(String(m.value),0,0);
+    ctx.fillStyle='#fff';ctx.fillText(String(m.value),0,0);
     ctx.restore();
   }
   function drawAim(){
@@ -253,7 +261,8 @@
   }
   function hitMosquito(mosquito){
     if(!mosquito||mosquito.dead)return;
-    score++;scoreEl.textContent=score;
+    waveHitCount++;
+    score+=mosquito.value;scoreEl.textContent=score;
     if(score>=nextFlyScore){
       fliesPerWave++;
       nextFlyScore+=25;
@@ -314,7 +323,14 @@
           mosquito.passSoundPlayed=true;
           playFlyPassRightSound();
         }
-        if(mosquito.x<-45||mosquito.x>W+45){end();draw();return;}
+        if(mosquito.x<-45||mosquito.x>W+45){
+          mosquitoes.splice(i,1);
+          waveEscapeCount++;
+          score=Math.max(0,score-mosquito.value);
+          scoreEl.textContent=score;
+          if(!mosquitoes.length)spawn=.45;
+          if(waveHitCount===0&&waveEscapeCount>=waveSize){end();draw();return;}
+        }
       }
     }
     if(shot){
